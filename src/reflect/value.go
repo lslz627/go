@@ -177,12 +177,14 @@ func methodName() string {
 	return f.Name()
 }
 
+// runtime.eface
 // emptyInterface is the header for an interface{} value.
 type emptyInterface struct {
 	typ  *rtype
 	word unsafe.Pointer
 }
 
+// runtime.iface
 // nonEmptyInterface is the header for an interface value with methods.
 type nonEmptyInterface struct {
 	// see ../runtime/iface.go:/Itab

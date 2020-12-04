@@ -250,6 +250,13 @@ const (
 	logHeapArenaBytes = (6+20)*(_64bit*(1-sys.GoosWindows)*(1-sys.GoarchWasm)) + (2+20)*(_64bit*sys.GoosWindows) + (2+20)*(1-_64bit) + (2+20)*sys.GoarchWasm
 
 	// heapArenaBitmapBytes is the size of each heap arena's bitmap.
+	// 参考这里的图片
+	// https://qcrao.com/2019/03/13/graphic-go-memory-allocation/
+	/*
+		bitmap区域标识arena区域哪些地址保存了对象，并且用4bit标志位表示对象是否包含指针、GC标记信息。
+		bitmap中一个byte大小的内存对应arena区域中4个指针大小（指针大小为 8B ）的内存，
+		所以bitmap区域的大小是512GB/(4*8B)=16GB
+	*/
 	heapArenaBitmapBytes = heapArenaBytes / (sys.PtrSize * 8 / 2)
 
 	pagesPerArena = heapArenaBytes / pageSize

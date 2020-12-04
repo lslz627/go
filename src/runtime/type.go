@@ -438,6 +438,53 @@ type structtype struct {
 	fields  []structfield
 }
 
+/**
+refer: https://www.icloud.com/notes/0jvYkuIipNZm6a9IKxKnqCPaw
+
+这里以 User 这个 struct 为例来说明，上面这个底层结构
+type User struct {
+	username string
+	age int
+}
+
+func (user User) GetAge() int {
+	return user.age
+}
+*/
+
+/** 汇编结果
+go 1.14.7
+go tool compile -l -S main.go > main.S
+
+type."".User SRODATA size=160
+	// 下面的每一行占用 16 个字节
+	0x0000 18 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00  ................ // _type.size = 24, 其中 username 16, age 8
+	0x0010 64 15 5a 77 07 08 08 19 00 00 00 00 00 00 00 00  d.Zw............ // _type.kind = 25, 也就是 kindStruct
+	0x0020 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+	0x0030 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+	0x0040 02 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00  ................
+	0x0050 00 00 00 00 01 00 01 00 40 00 00 00 00 00 00 00  ........@.......  // 通过这一行知道, uncommontype.mcount = 1, uncommontype.xcount = 1, uncommontype.moff = 64
+	0x0060 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+	0x0070 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+	0x0080 00 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00  ........ .......
+	0x0090 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+	rel 24+8 t=1 type..eqfunc."".User+0         // 在 24 字节开始偏移量赋值: _type.equal
+	rel 32+8 t=1 runtime.gcbits.01+0			// 在 32 字节开始赋值: _type.gcdata
+	rel 40+4 t=5 type..namedata.*main.User.+0	// 在 40 字节开始赋值: _type.str nameOff
+	rel 44+4 t=5 type.*"".User+0				// 在 44 字节开始赋值: _type.ptrToThis typeOff
+	rel 48+8 t=1 type..importpath."".+0			// 在 48 字节开始赋值: structtype.pkgPath name
+	rel 56+8 t=1 type."".User+96				// 在 56 字节开始赋值: structtype.fields []structfield, 因为这是一个 slice 类型、需要占用 24 个字节，所以下一个元素相对地址是 80，同时 slice 的首指针指向自己的第 96 字节处
+	rel 80+4 t=5 type..importpath."".+0			// 在 80 字节开始赋值: uncommontype struct 类型、这个类型占用 16 个字节
+	rel 96+8 t=1 type..namedata.username-+0     // 在自己的 56 字节处指向这里，每个成员对应一个 structfield 结构，对应 username 字段
+	rel 104+8 t=1 type.string+0
+	rel 120+8 t=1 type..namedata.age-+0			// 对应 age 字段
+	rel 128+8 t=1 type.int+0
+	rel 144+4 t=5 type..namedata.GetAge.+0		// uncommontype 类型里面、有一个成员 moff 间接的会指向这里
+	rel 148+4 t=25 type.func() int+0
+	rel 152+4 t=25 "".(*User).GetAge+0
+	rel 156+4 t=25 "".User.GetAge+0
+*/
+
 // name is an encoded type name with optional extra data.
 // See reflect/type.go for details.
 type name struct {

@@ -583,11 +583,20 @@ TEXT ·publicationBarrier(SB),NOSPLIT,$0-0
 // 1. pop the caller
 // 2. sub 5 bytes from the callers return
 // 3. jmp to the argument
+//
+// refer: https://github.com/cch123/golang-notes/blob/master/assembly.md#plan9-assembly-%E5%AE%8C%E5%85%A8%E8%A7%A3%E6%9E%90
+//
+// 如果编译器在最终的汇编结果中没有插入 caller BP(源代码中所称的 frame pointer)的情况下，
+// 伪 SP 和伪 FP 之间只有 8 个字节的 caller 的 return address，而插入了 BP 的话，就会多出额外的 8 字节。
+// 也就说伪 SP 和伪 FP 的相对位置是不固定的，有可能是间隔 8 个字节，也有可能间隔 16 个字节。并且判断依据会根据平台和 Go 的版本有所不同。
+//
 TEXT runtime·jmpdefer(SB), NOSPLIT, $0-16
 	MOVQ	fv+0(FP), DX	// fn
 	MOVQ	argp+8(FP), BX	// caller sp
 	LEAQ	-8(BX), SP	// caller sp after CALL
 	MOVQ	-8(SP), BP	// restore BP as if deferreturn returned (harmless if framepointers not in use)
+	// 把返回地址减去一条Call指令的大小，这样可以让Caller再次调用deferreturn却不会像递归一样消耗栈空间；如果当前函数的defer都执行完了，deferreturn就正常返回
+	// SP 指向的地址空间、就是 return addr, 这里减 5，就是减去一条 call deferreturn，调用的大小
 	SUBQ	$5, (SP)	// return to CALL again
 	MOVQ	0(DX), BX
 	JMP	BX	// but first run the deferred function

@@ -240,6 +240,7 @@ func deferproc(siz int32, fn *funcval) { // arguments of fn follow fn
 	d.fn = fn
 	d.pc = callerpc
 	d.sp = sp
+	// 下面的逻辑把函数调用的参数，copy 到 defer 结构体的后面
 	switch siz {
 	case 0:
 		// Do nothing.
@@ -311,8 +312,9 @@ func deferprocStack(d *_defer) {
 
 const (
 	deferHeaderSize = unsafe.Sizeof(_defer{})
-	minDeferAlloc   = (deferHeaderSize + 15) &^ 15
-	minDeferArgs    = minDeferAlloc - deferHeaderSize
+	// &^ 等价于 x & ~y
+	minDeferAlloc = (deferHeaderSize + 15) &^ 15
+	minDeferArgs  = minDeferAlloc - deferHeaderSize
 )
 
 // defer size class for arg size sz
