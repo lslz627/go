@@ -441,6 +441,8 @@ type structtype struct {
 /**
 refer: https://www.icloud.com/notes/0jvYkuIipNZm6a9IKxKnqCPaw
 
+【Golang】类型系统: https://mp.weixin.qq.com/s/qQsLP5o7U8AG_phzGzbjJg
+
 这里以 User 这个 struct 为例来说明，上面这个底层结构
 type User struct {
 	username string
@@ -474,7 +476,7 @@ type."".User SRODATA size=160
 	rel 44+4 t=5 type.*"".User+0				// 在 44 字节开始赋值: _type.ptrToThis typeOff
 	rel 48+8 t=1 type..importpath."".+0			// 在 48 字节开始赋值: structtype.pkgPath name
 	rel 56+8 t=1 type."".User+96				// 在 56 字节开始赋值: structtype.fields []structfield, 因为这是一个 slice 类型、需要占用 24 个字节，所以下一个元素相对地址是 80，同时 slice 的首指针指向自己的第 96 字节处
-	rel 80+4 t=5 type..importpath."".+0			// 在 80 字节开始赋值: uncommontype struct 类型、这个类型占用 16 个字节
+	rel 80+4 t=5 type..importpath."".+0			// 在 80 字节开始赋值: uncommontype struct 类型、这个类型占用 16 个字节, 其中 moff 的值是 64
 	rel 96+8 t=1 type..namedata.username-+0     // 在自己的 56 字节处指向这里，每个成员对应一个 structfield 结构，对应 username 字段
 	rel 104+8 t=1 type.string+0
 	rel 120+8 t=1 type..namedata.age-+0			// 对应 age 字段

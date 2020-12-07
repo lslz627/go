@@ -812,7 +812,17 @@ type itab struct {
 	_type *_type
 	hash  uint32 // copy of _type.hash. Used for type switches.
 	_     [4]byte
-	fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
+	/*
+		有 2 个作用：
+		作用一：
+				非空接口，方法实际链接到动态类型方法的指针，就存在这个变量里面
+				记录的是动态类型实现的那些接口要求的方法的地址，是从方法元数据中拷贝来的，为的是快速定位到方法。
+		作用二:
+			缓存类型断言的结果
+		     记录的是动态类型实现的那些接口要求的方法的地址，是从方法元数据中拷贝来的，为的是快速定位到方法。
+			【Golang】图解类型断言: https://mp.weixin.qq.com/s/i0vmHjF7faDo0hvOlVfJcA
+	*/
+	fun [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
 }
 
 // Lock-free stack node.
