@@ -150,6 +150,7 @@ func nilinterhash(p unsafe.Pointer, h uintptr) uintptr {
 	}
 }
 
+// 各种内置类型有与之对应的hash函数，在runtime包的alg.go中有定义哦~
 // typehash computes the hash of the object of type t at address p.
 // h is the seed.
 // This function is seldom used. Most maps use for hashing either

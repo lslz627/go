@@ -813,17 +813,21 @@ func readvarintUnsafe(fd unsafe.Pointer) (uint32, unsafe.Pointer) {
 // d. It normally processes all active defers in the frame, but stops immediately
 // if a defer does a successful recover. It returns true if there are no
 // remaining defers to run in the frame.
+// 可以参考这里：http://xiaorui.cc/archives/6579
 func runOpenDeferFrame(gp *g, d *_defer) bool {
 	done := true
+	// 所有defer信息都存储在funcdata中
 	fd := d.fd
 
 	// Skip the maxargsize
-	_, fd = readvarintUnsafe(fd)
-	deferBitsOffset, fd := readvarintUnsafe(fd)
-	nDefers, fd := readvarintUnsafe(fd)
+	_, fd = readvarintUnsafe(fd)                // 跳过maxargssize
+	deferBitsOffset, fd := readvarintUnsafe(fd) // deferBits偏移量
+	nDefers, fd := readvarintUnsafe(fd)         // 函数中defer数量
+	// 当前执行的defer
 	deferBits := *(*uint8)(unsafe.Pointer(d.varp - uintptr(deferBitsOffset)))
 
 	for i := int(nDefers) - 1; i >= 0; i-- {
+		// 从defer中读取funcdata信息
 		// read the funcdata info for this defer
 		var argWidth, closureOffset, nArgs uint32
 		argWidth, fd = readvarintUnsafe(fd)
@@ -837,20 +841,23 @@ func runOpenDeferFrame(gp *g, d *_defer) bool {
 			}
 			continue
 		}
+		// 执行的函数和参数
 		closure := *(**funcval)(unsafe.Pointer(d.varp - uintptr(closureOffset)))
 		d.fn = closure
 		deferArgs := deferArgs(d)
 		// If there is an interface receiver or method receiver, it is
 		// described/included as the first arg.
+		// 将_defer参数数据拷贝到和_defer关联内存位置
 		for j := uint32(0); j < nArgs; j++ {
-			var argOffset, argLen, argCallOffset uint32
-			argOffset, fd = readvarintUnsafe(fd)
-			argLen, fd = readvarintUnsafe(fd)
+			var argOffset, argLen, argCallOffset uint32 // defer参数在栈帧中的偏移量
+			argOffset, fd = readvarintUnsafe(fd)        // 参数大小
+			argLen, fd = readvarintUnsafe(fd)           // 函数调用时，参数在args参数中的位置
 			argCallOffset, fd = readvarintUnsafe(fd)
 			memmove(unsafe.Pointer(uintptr(deferArgs)+uintptr(argCallOffset)),
 				unsafe.Pointer(d.varp-uintptr(argOffset)),
 				uintptr(argLen))
 		}
+		// 通过位移操作,移到下一个defer执行位置
 		deferBits = deferBits &^ (1 << i)
 		*(*uint8)(unsafe.Pointer(d.varp - uintptr(deferBitsOffset))) = deferBits
 		p := d._panic
@@ -887,6 +894,10 @@ func reflectcallSave(p *_panic, fn, arg unsafe.Pointer, argsize uint32) {
 	}
 }
 
+// 执行流程参考幼鳞实验室的教程
+// 【Golang】图解 panic & recover: https://mp.weixin.qq.com/s/vcJ6TsnknaCoYhH6XZnNMw
+// go1.14实现defer性能大幅度提升原理: http://xiaorui.cc/archives/6579
+// open coded defer 是怎么实现的: https://xargin.com/open-coded-defer-in-go-1-14/
 // The implementation of the predeclared function panic.
 func gopanic(e interface{}) {
 	gp := getg()
@@ -973,6 +984,19 @@ func gopanic(e interface{}) {
 				addOneOpenDeferFrame(gp, 0, nil)
 			}
 		} else {
+			/*
+							  ┌──────────────────┐
+							  │                  │
+							  ├──────────────────┤
+							  │                  │
+							  ├──────────────────┤
+				 p.argp ───▶  │        X         │
+							  ├──────────────────┤
+							  │   return addr    │
+							  ├──────────────────┤
+							  │                  │
+							  └──────────────────┘
+			*/
 			p.argp = unsafe.Pointer(getargp(0))
 			reflectcall(nil, unsafe.Pointer(d.fn), deferArgs(d), uint32(d.siz), uint32(d.siz))
 		}
@@ -994,7 +1018,12 @@ func gopanic(e interface{}) {
 			gp._defer = d.link
 			freedefer(d)
 		}
+		// 在每个 defer 函数里面的逻辑执行完成后，检测当前 panic 是否被恢复
+		// 所有的 panic 必须被恢复才能执行此逻辑、否则将跳转到
+		// fatalpanic
+		// 执行打印 panic 逻辑
 		if p.recovered {
+			// 如果已经被恢复、从 panic 链表中里面移除
 			gp._panic = p.link
 			if gp._panic != nil && gp._panic.goexit && gp._panic.aborted {
 				// A normal recover would bypass/abort the Goexit.  Instead,
@@ -1152,6 +1181,39 @@ func recovery(gp *g) {
 	gp.sched.sp = sp
 	gp.sched.pc = pc
 	gp.sched.lr = 0
+	/*
+		func A() {
+			defer A1()
+			defer A2()
+
+			panic("panic")
+		}
+
+		func A2() {
+			recover()
+			fmt.Println("A2")
+		}
+
+		func A1() {
+		}
+	*/
+
+	/*
+		func A() {
+			r = runtime.deferproc(0, A1)
+			if r > 0 {
+				goto ret
+			}
+			r = runtime.deferproc(0, A2)
+			if r > 0 {
+				goto ret
+			}
+			// code to do something
+		ret:
+			runtime.deferreturn()
+		}
+	*/
+	// 返回的 r 不能为 0 了、要进入 if 判断、去进行 ret 操作
 	gp.sched.ret = 1
 	gogo(&gp.sched)
 }

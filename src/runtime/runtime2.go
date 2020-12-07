@@ -192,9 +192,12 @@ type note struct {
 	key uintptr
 }
 
+// 结构说明，可以参考这里
+// https://mp.weixin.qq.com/s/iFYkcLbNK5pOA37N7ToJ5Q
 type funcval struct {
 	fn uintptr
 	// variable-size, fn-specific data here
+	// 这里是 function value 的捕获列表变量
 }
 
 type iface struct {
@@ -861,8 +864,8 @@ func extendRandom(r []byte, n int) {
 // 说明连接: https://mp.weixin.qq.com/s/gaC2gmFhJezH-9-uxpz07w
 type _defer struct {
 	siz     int32 // includes both arguments and results
-	started bool  // 标识defer函数是否已经开始执行
-	heap    bool
+	started bool  // 标识defer函数是否已经开始执行，主要是在有 panic 流程引发的时候使用, panic执行defer时会把它标记为true
+	heap    bool  // 表示是否在堆上面分配的 _defer 结构体
 	// openDefer indicates that this _defer is for a frame with open-coded
 	// defers. We have only one defer record for the entire frame (which may
 	// currently have 0, 1, or more defers active).
@@ -873,7 +876,7 @@ type _defer struct {
 	sp     uintptr  // sp at time of defer，
 	pc     uintptr  // pc at time of defer，是deferproc函数返回后要继续执行的指令地址
 	fn     *funcval // can be nil for open-coded defers
-	_panic *_panic  // panic that is running defer
+	_panic *_panic  // panic that is running defer, 记录触发defer执行的_panic指针
 	link   *_defer
 
 	// If openDefer is true, the fields below record values about the stack
