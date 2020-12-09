@@ -749,6 +749,21 @@ func (t *rtype) uncommon() *uncommonType {
 	}
 }
 
+/**
+实际对外暴露的是 Type 类型
+
+var i int = 0
+var t Type = reflect.TypeOf(i) // 在返回的时候、会发生类型转换，从 rtype 具体类型转换 Type 类型，iface.data 实际指向 rtype 类型，iface.tab 会根据实际情况初始化
+t.String() // 调用的就是下面的方法
+
+调用的时候、通过动态派发的方式实现多态
+Type 类型，实际的底层类型是 runtime.iface 类型
+
+type iface struct {
+	tab  *itab			// 方法的动态派发，这个 itab 里面的 fun 偏移量实现
+	data unsafe.Pointer // 动态调用 String 时，会把这个值作为传递给函数的第一个参数
+}
+*/
 func (t *rtype) String() string {
 	s := t.nameOff(t.str).name()
 	if t.tflag&tflagExtraStar != 0 {
@@ -2954,6 +2969,55 @@ func appendVarint(x []byte, v uintptr) []byte {
 	return x
 }
 
+/**
+
+                                                                     itab: <Type, *rtype>                       Type: rtype
+                            ┌──────────────────┐                     ┌──────────────────┐                   ┌──────────────────┐
+                            │                  │         ┌──────────▶│      *inter      ├──────────────────▶│                  │
+                            │                  │         │           ├──────────────────┤                   │                  │
+                            │                  │         │        ┌──│      *ityp       │                   │                  │
+                            │                  │         │        │  ├──────────────────┤                   │                  │
+                            │                  │         │        │  │       hash       │                   │                  │
+                            │                  │         │        │  ├──────────────────┤                   │                  │
+                            │                  │         │        │  │                  │                   │                  │
+                            │                  │         │        │  ├──────────────────┤                   │                  │
+                            │                  │         │        │  │       fun        │──┐                │                  │
+                            │                  │         │        │  ├──────────────────┤  │                │                  │
+                            ├──────────────────┤         │        │  │        .         │  │                │                  │
+                            │       word       ├─────────┤        │  │        .         │  │                │                  │
+                            ├──────────────────┤         │        │  │        .         │  │                │                  │
+                            │      *itab       ├─────────┤        │  └──────────────────┘  │                └──────────────────┘
+┌──────────┐                ├──────────────────┤         │        │                        │
+│  var t   │ ────────────▶  │      &rtype      ├─────────┤        │                        │
+└──────────┘                ├──────────────────┤         │        │                        │
+                            │   return addr    │         │        │         rtype          │
+                            ├──────────────────┤         │        │  ┌──────────────────┐  │
+      ┌────┐                │    caller bp     │         │        └─▶│       size       │  │
+      │ BP │ ────────────▶  ├──────────────────┤         ├─────────▶ ├──────────────────┤  │     method specify implement
+      └────┘                │                  │         └─────────▶ │     ptrdata      │  │
+                            │                  │                     ├──────────────────┤  │
+                            │                  │                     │      tflag       │  │
+                            │                  │                     ├──────────────────┤  │
+                            │                  │                     │        .         │  │
+                            │                  │                     │        .         │  │
+                            │                  │                     ├──────────────────┤  │
+                            │                  │                     │   uncommontype   │  │
+                            │                  │                     ├──────────────────┤  │
+      ┌────┐                │                  │                     │                  │  │
+      │ SP │  ────────────▶ │                  │                     │                  │  │
+      └────┘                │                  │                     ├──────────────────┤  │
+                            │                  │                     │     nameOff      │  │
+                            │                  │                     ├──────────────────┤  │
+                            │                  │                     │     typeOff      │  │
+                            │                  │         method      ├──────────────────┤  │
+                            │                  │                     │      String      │◀─┘
+                            │                  │                     ├──────────────────┤
+                            │                  │                     │      Align       │
+                            │                  │                     ├──────────────────┤
+                            │                  │                     │                  │
+                            │                  │                     │                  │
+                            └──────────────────┘                     └──────────────────┘
+*/
 // toType converts from a *rtype to a Type that can be returned
 // to the client of package reflect. In gc, the only concern is that
 // a nil *rtype must be replaced by a nil Type, but in gccgo this
@@ -2963,6 +3027,8 @@ func toType(t *rtype) Type {
 	if t == nil {
 		return nil
 	}
+
+	// 这里在返回的时候、会做一个类型转换，把 *rtype 这个具体类型转换成 Type 这个，非空接口类型
 	return t
 }
 

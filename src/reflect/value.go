@@ -65,16 +65,71 @@ type Value struct {
 type flag uintptr
 
 const (
-	flagKindWidth        = 5 // there are 27 kinds
-	flagKindMask    flag = 1<<flagKindWidth - 1
-	flagStickyRO    flag = 1 << 5
-	flagEmbedRO     flag = 1 << 6
+	flagKindWidth      = 5 // there are 27 kinds
+	flagKindMask  flag = 1<<flagKindWidth - 1
+	flagStickyRO  flag = 1 << 5
+	flagEmbedRO   flag = 1 << 6
+	/*
+			这个标志、和下面的标志、还是有区别的，从定义上面来说、这个标志说明、val 是一个指向数据的指针
+			，但是是指针、指向的数据、不代表一定能取地址，有可能这个地址对用户来说，不可达，取地址没有意义
+		看一个例子，这个例子
+
+		var i int = 10
+		// ValueOf 的参数是 interface{}, 调用的时候，会发生参数值 copy
+		var t Value = refelct.ValueOf(i)
+
+		// 可以看下面的传递参数的图
+	*/
 	flagIndir       flag = 1 << 7
 	flagAddr        flag = 1 << 8
 	flagMethod      flag = 1 << 9
 	flagMethodShift      = 10
 	flagRO          flag = flagStickyRO | flagEmbedRO
 )
+
+/**
+
+
+                                                                            int rtype
+
+                                ┌──────────────────┐                     ┌────────────────────────┐
+                                │                  │                     │                        │
+                                ├──────────────────┤         ┌─────────▶ │                        │
+                   var i        │        3         │         │           │                        │
+                                ├──────────────────┤         │           │                        │
+                                │       flag       │         │           │                        │◀─┐
+                                ├──────────────────┤         │           │                        │  │
+                             ┌──│ptr<&(copy of 3)> │         │           ├────────────────────────┤  │
+                             │  ├──────────────────┤         │           │        method[]        │  │
+  return value start         │  │*itab<Value, int> │─────────┼┐          └────────────────────────┘  │
+                             │  ├──────────────────┤         ││                                      │
+                             ├──│   &(copy of 3)   │         ││                                      │
+                             │  ├──────────────────┤         ││                                      │
+       arguments start       │  │   &(int rtype)   ├─────────┘│           itab<Value, int>           │               Value rtype
+                             │  ├──────────────────┤          │                                      │
+                             │  │   return addr    │          │          ┌────────────────────────┐  │           ┌──────────────────┐
+                             │  ├──────────────────┤          │          │  inter *interfacetype  ├──│──────────▶│                  │
+                             │  │    caller BP     │          └─────────▶├────────────────────────┤  │           │                  │
+                             │  ├──────────────────┤                     │      _type *_type      │──┘           │                  │
+                             │  │                  │                     ├────────────────────────┤              │                  │
+                             │  │                  │                     │      hash  uint32      │              │                  │
+                             │  │call reflect.ValueO                     ├────────────────────────┤              │                  │
+                             │  │F                 │                     │           .            │              │                  │
+                             │  │                  │                     │           .            │              │                  │
+                             │  │                  │                     │           .            │              └──────────────────┘
+                             │  │                  │                     │                        │
+                             │  │                  │                     ├────────────────────────┤
+                             │  │                  │                     │     fun [1]uintptr     │
+                             │  │                  │                     └────────────────────────┘
+                             │  │                  │
+            heap area        │  ├──────────────────┤ ┌─────────────────────────────────────────────────┐
+                             ▼─▶│    copy of 3     │ │   this value is not addressable, user not see   │
+                                ├──────────────────┤ └─────────────────────────────────────────────────┘
+                                │                  │
+                                │                  │
+                                └──────────────────┘
+
+*/
 
 func (f flag) kind() Kind {
 	return Kind(f & flagKindMask)
