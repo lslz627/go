@@ -121,6 +121,7 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
 	}
 
 	cas1 := (*[1 << 16]scase)(unsafe.Pointer(cas0))
+	// 前一半是记录轮训顺序、后一半记录加锁顺序
 	order1 := (*[1 << 17]uint16)(unsafe.Pointer(order0))
 
 	scases := cas1[:ncases:ncases]
@@ -152,6 +153,7 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
 	// cases correctly, and they are rare enough not to bother
 	// optimizing (and needing to test).
 
+	// 轮询顺序：通过 runtime.fastrandn 函数引入随机性；
 	// generate permuted order
 	for i := 1; i < ncases; i++ {
 		j := fastrandn(uint32(i + 1))
@@ -161,6 +163,13 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
 
 	// sort the cases by Hchan address to get the locking order.
 	// simple heap sort, to guarantee n log n time and constant stack footprint.
+	/*
+		lockOrder 的主要作用是避免死锁，如果两个 Goroutine 都需要锁定 ChannelA 和 ChannelB 才能执行任务，当两者尝试去依照不同的顺序进行锁定时，就可能发生死锁，以下是同时发生的：
+
+		Goroutine1 先锁定 A，这时发现 B 被锁定了，它是会有 A 的锁，等待 B 的释放
+		Goroutine2 先锁定 B，这时发现 A 被锁定了，它会持有 B 的锁，等待 A 的释放
+		如果锁定的顺序相同，这种情况就不会出现了，Goroutine1 和 2 都按照字母序来锁定 Channel，先获得 A 的 Goroutine 就可以先执行
+	*/
 	for i := 0; i < ncases; i++ {
 		j := i
 		// Start with the pollorder to permute cases on the same channel.
@@ -170,6 +179,7 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
 			lockorder[j] = lockorder[k]
 			j = k
 		}
+		// 构建 lockorder 值的同时、也在构建一个大顶推
 		lockorder[j] = pollorder[i]
 	}
 	for i := ncases - 1; i >= 0; i-- {
@@ -185,6 +195,7 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
 			if k+1 < i && scases[lockorder[k]].c.sortkey() < scases[lockorder[k+1]].c.sortkey() {
 				k++
 			}
+			// 大顶推，实现从小到大排序
 			if c.sortkey() < scases[lockorder[k]].c.sortkey() {
 				lockorder[j] = lockorder[k]
 				j = k
