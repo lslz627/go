@@ -233,6 +233,7 @@ func publicationBarrier()
 // A general rule is that the result of getcallersp should be used
 // immediately and can only be passed to nosplit functions.
 
+// see runtime.newproc, 我打了注释、这个如何实现
 //go:noescape
 func getcallerpc() uintptr
 

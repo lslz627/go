@@ -3372,6 +3372,56 @@ func malg(stacksize int32) *g {
 	return newg
 }
 
+/*
+
+runtime.newproc 的栈针简单示意图
+
+┌────────────────┐
+│       .        │
+├────────────────┤
+│ retrun addr    │
+├────────────────┤◀────────SP+48
+│ caller bp      │
+├────────────────┤◀────────SP+40
+│                │
+│    local       │
+│     addr       │
+├────────────────┤
+│                │
+├────────────────┤◀────────SP
+│                │
+└────────────────┘
+
+下面的序号、因为我对源码进行了注释、会对不上、但是这个不影响理解
+
+TEXT runtime.newproc(SB) /usr/local/Cellar/go/1.14.7/libexec/src/runtime/proc.go
+  proc.go:3382          0x1036b30               4883ec40                SUBQ $0x40, SP
+  proc.go:3382          0x1036b34               48896c2438              MOVQ BP, 0x38(SP)
+  proc.go:3382          0x1036b39               488d6c2438              LEAQ 0x38(SP), BP
+  proc.go:3383          0x1036b3e               65488b042530000000      MOVQ GS:0x30, AX
+  proc.go:3386          0x1036b47               0f57c0                  XORPS X0, X0
+  proc.go:3386          0x1036b4a               0f11442408              MOVUPS X0, 0x8(SP)
+  proc.go:3386          0x1036b4f               0f11442418              MOVUPS X0, 0x18(SP)
+  proc.go:3386          0x1036b54               0f11442428              MOVUPS X0, 0x28(SP)
+  proc.go:3386          0x1036b59               488d0d70f80100          LEAQ runtime.newproc.func1(SB), CX  // 下面的过程在建立一个 runtime.funcval
+  proc.go:3386          0x1036b60               48894c2408              MOVQ CX, 0x8(SP)
+  proc.go:3386          0x1036b65               488d4c2450              LEAQ 0x50(SP), CX					// 对应的是 siz int32 参数
+  proc.go:3386          0x1036b6a               48894c2410              MOVQ CX, 0x10(SP)
+  proc.go:3386          0x1036b6f               488d4c2458              LEAQ 0x58(SP), CX					// 对应的是 fn *funcval 参数
+  proc.go:3386          0x1036b74               48894c2418              MOVQ CX, 0x18(SP)
+  proc.go:3386          0x1036b79               8b4c2448                MOVL 0x48(SP), CX					// caller return addr，这里就是 runtime.getcallerpc() 的实现
+  proc.go:3386          0x1036b7d               894c2420                MOVL CX, 0x20(SP)
+  proc.go:3386          0x1036b81               4889442428              MOVQ AX, 0x28(SP)
+  proc.go:3386          0x1036b86               488b442440              MOVQ 0x40(SP), AX
+  proc.go:3386          0x1036b8b               4889442430              MOVQ AX, 0x30(SP)
+  proc.go:3386          0x1036b90               488d442408              LEAQ 0x8(SP), AX
+  proc.go:3386          0x1036b95               48890424                MOVQ AX, 0(SP)
+  proc.go:3386          0x1036b99               e882000200              CALL runtime.systemstack(SB)
+  proc.go:3389          0x1036b9e               488b6c2438              MOVQ 0x38(SP), BP
+  proc.go:3389          0x1036ba3               4883c440                ADDQ $0x40, SP
+  proc.go:3389          0x1036ba7               c3                      RET
+*/
+
 // Create a new g running fn with siz bytes of arguments.
 // Put it on the queue of g's waiting to run.
 // The compiler turns a go statement into a call to this.
@@ -3398,6 +3448,28 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 		_g_.m.throwing = -1 // do not dump full stacks
 		throw("go of nil func value")
 	}
+
+	/*
+		┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─         ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─         ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+		 before preemption       │         preemption              │         resume                  │
+		│                                 │                                 │
+		    .─────.     .─────.  │            .─────.     .─────.  │            .─────.     .─────.  │
+		│  ;  m0   :   ;  m1   :          │  ;  m0   :   ;  m1   :          │  ;  m0   :   ;  m1   :
+		   :       ;   :       ; │           :       ;   :       ; │           :       ;   :       ; │
+		│   ╲     ╱     ╲     ╱           │   ╲     ╱     ╲     ╱           │   ╲     ╱     ╲     ╱
+		     `─┬─'       `───'   │             `───'       `─┬─'   │             `─┬─'◀─┐    `───'   │
+		│      │                          │                  │              │      │    │
+		       │                 ├───────▶                   │     ├───────▶       │    │  ┌─────────┴───┐
+		│   .──▼──.                       │               .──▼──.           │   .──▼──. └──│             │
+		   ;   p   :             │              modify   ;   p   : │           ;   p   :   │may error,   │
+		│  :       ;                      │  something───▶       ;          │  :       ;   │something may│
+		    ╲     ╱              │                        ╲     ╱  │            ╲     ╱    │changed      │
+		│    `───'                        │                `───'            │    `───'     │             │
+		                         │                                 │                       │             │
+		│                                 │                                 │              └─────────────┘
+		 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘         ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘         ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+	*/
+	// 为了保持数据一致性、禁止当前的 m 被抢占、因为接下来的执行过程中、可能会把 p 保存在局部变量中
 	acquirem() // disable preemption because it can be holding p in a local var
 	siz := narg
 	siz = (siz + 7) &^ 7
@@ -3412,6 +3484,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 
 	_p_ := _g_.m.p.ptr()
 	newg := gfget(_p_)
+	// 如果没有空闲的 goroutine
 	if newg == nil {
 		newg = malg(_StackMin)
 		casgstatus(newg, _Gidle, _Gdead)
