@@ -3562,6 +3562,7 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 	runqput(_p_, newg, true)
 
+	// main goroutine 已经开始、并且、存在空闲的 p，但是没有处于 spinning 状态的 m （ 所有的 m 都在忙，没有空闲 ）
 	if atomic.Load(&sched.npidle) != 0 && atomic.Load(&sched.nmspinning) == 0 && mainStarted {
 		wakep()
 	}
